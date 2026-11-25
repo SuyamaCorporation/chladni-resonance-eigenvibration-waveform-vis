@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>クラドニ図形 固有振動モード シミュレーター</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  canvas { image-rendering: pixelated; }
+  input[type=range] { accent-color: #6366f1; }
+</style>
+</head>
+<body class="bg-gray-900 text-white min-h-screen">
+<div class="max-w-5xl mx-auto px-4 py-6">
+  <h1 class="text-2xl font-bold text-center mb-1 text-indigo-300">クラドニ図形 固有振動モード シミュレーター</h1>
+  <p class="text-center text-gray-400 text-sm mb-6">矩形板の固有振動モード (m,n) における節線パターンと砂粒の配置をシミュレート</p>
+
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <!-- Controls -->
+    <div class="lg:col-span-1 space-y-4">
+      <div class="bg-gray-800 rounded-xl p-4 space-y-4">
+        <h2 class="font-semibold text-indigo-300 border-b border-gray-700 pb-2">振動モード設定</h2>
+
+        <div>
+          <label for="modeM" class="text-sm text-gray-300 flex justify-between">
+            <span>モード m</span><span id="modeMVal" class="text-indigo-400 font-mono">2</span>
+          </label>
+          <input type="range" id="modeM" min="1" max="8" value="2" class="w-full mt-1" aria-label="モードm (1から8)">
+        </div>
+        <div>
+          <label for="modeN" class="text-sm text-gray-300 flex justify-between">
+            <span>モード n</span><span id="modeNVal" class="text-indigo-400 font-mono">3</span>
+          </label>
+          <input type="range" id="modeN" min="1" max="8" value="3" class="w-full mt-1" aria-label="モードn (1から8)">
+        </div>
+
+        <div>
+          <label for="plateShape" class="text-sm text-gray-300 block mb-1">板の形状</label>
+          <select id="plateShape" class="w-full bg-gray-700 text-white rounded-lg px-3 py-2 text-sm border border-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500" aria-label="板の形状">
+            <option value="1">正方形 (1:1)</option>
+            <option value="2">矩形 (2:1)</option>
+            <option value="3">矩形 (3:1)</option>
+          </select>
+        </div>
+
+        <div>
+          <label for="numGrains" class="text-sm text-gray-300 flex justify-between">
+            <span>砂粒数</span><span id="numGrainsVal" class="text-indigo-400 font-mono">3000</span>
+          </label>
+          <input type="range" id="numGrains" min="1000" max="10000" step="500" value="3000" class="w-full mt-1" aria-label="砂粒数">
+        </div>
+
+        <div>
+          <label for="animSpeed" class="text-sm text-gray-300 flex justify-between">
+            <span>アニメ速度</span><span id="animSpeedVal" class="text-indigo-400 font-mono">3</span>
+          </label>
+          <input type="range" id="animSpeed" min="1" max="10" value="3" class="w-full mt-1" aria-label="アニメーション速度">
+        </div>
+
+        <div class="pt-2 space-y-2">
+          <button id="btnSimulate" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-2 px-4 rounded-lg transition focus:outline-none focus:ring-2 focus:ring-indigo-400" aria-label="シミュレーション開始">
+            シミュレーション開始
+          </button>
+          <button id="btnExport" class="w-full bg-gray-600 hover:bg-gray-500 text-white font-semibold py-2 px-4 rounded-lg transition focus:outline-none focus:ring-2 focus:ring-gray-400" aria-label="PNG画像を保存">
+            PNG 保存
+          </button>
+        </div>
+      </div>
+
+      <!-- Frequency info -->
+      <div class="bg-gray-800 rounded-xl p-4" role="region" aria-label="共振周波数情報">
+        <h2 class="font-semibold text-indigo-300 border-b border-gray-700 pb-2 mb-3">共振周波数比</h2>
+        <div class="text-center">
+          <div class="text-3xl font-mono text-yellow-400" id="freqRatio">-</div>
+          <div class="text-xs text-gray-400 mt-1">f(m,n) / f(1,1) = √(m² + n²) / √2</div>
+        </div>
+        <div class="mt-3 text-xs text-gray-400 space-y-1">
+          <div>現在モード: <span id="currentMode" class="text-white">-</span></div>
+          <div>節線数 (水平): <span id="nodalH" class="text-white">-</span></div>
+          <div>節線数 (垂直): <span id="nodalV" class="text-white">-</span></div>
+        </div>
+      </div>
+
+      <!-- Classic patterns reference -->
+      <div class="bg-gray-800 rounded-xl p-4">
+        <h2 class="font-semibold text-indigo-300 border-b border-gray-700 pb-2 mb-3">古典的パターン参照</h2>
+        <div class="space-y-2 text-xs text-gray-300">
+          <div class="flex gap-2 cursor-pointer hover:bg-gray-700 p-1 rounded" role="button" tabindex="0" data-m="1" data-n="1" aria-label="モード(1,1)を選択">
+            <span class="text-indigo-400 font-mono w-16">(1,1)</span><span>十字パターン（最単純）</span>
+          </div>
+          <div class="flex gap-2 cursor-pointer hover:bg-gray-700 p-1 rounded" role="button" tabindex="0" data-m="2" data-n="2" aria-label="モード(2,2)を選択">
+            <span class="text-indigo-400 font-mono w-16">(2,2)</span><span>格子パターン</span>
+          </div>
+          <div class="flex gap-2 cursor-pointer hover:bg-gray-700 p-1 rounded" role="button" tabindex="0" data-m="2" data-n="3" aria-label="モード(2,3)を選択">
+            <span class="text-indigo-400 font-mono w-16">(2,3)</span><span>クラシック 6区画</span>
+          </div>
+          <div class="flex gap-2 cursor-pointer hover:bg-gray-700 p-1 rounded" role="button" tabindex="0" data-m="3" data-n="4" aria-label="モード(3,4)を選択">
+            <span class="text-indigo-400 font-mono w-16">(3,4)</span><span>高次モード</span>
+          </div>
+          <div class="flex gap-2 cursor-pointer hover:bg-gray-700 p-1 rounded" role="button" tabindex="0" data-m="4" data-n="4" aria-label="モード(4,4)を選択">
+            <span class="text-indigo-400 font-mono w-16">(4,4)</span><span>対称高次格子</span>
+          </div>
+          <div class="flex gap-2 cursor-pointer hover:bg-gray-700 p-1 rounded" role="button" tabindex="0" data-m="5" data-n="6" aria-label="モード(5,6)を選択">
+            <span class="text-indigo-400 font-mono w-16">(5,6)</span><span>複雑多区画</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Canvas -->
+    <div class="lg:col-span-2">
+      <div class="bg-gray-800 rounded-xl p-4">
+        <div class="flex justify-between items-center mb-3">
+          <h2 class="font-semibold text-indigo-300">砂粒分布パターン</h2>
+          <span id="statusMsg" class="text-sm text-gray-400" aria-live="polite"></span>
+        </div>
+        <div class="flex justify-center">
+          <canvas id="mainCanvas" role="img" aria-label="クラドニ図形シミュレーション結果" class="rounded-lg border border-gray-700" style="max-width:100%;"></canvas>
+        </div>
+        <div class="mt-3 flex gap-4 text-xs text-gray-400 justify-center">
+          <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-full bg-white"></span> 節線（静止点）</span>
+          <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-full bg-gray-700"></span> 腹（振動点）</span>
+        </div>
+      </div>
+
+      <!-- Mode visualization grid -->
+      <div class="bg-gray-800 rounded-xl p-4 mt-4">
+        <h2 class="font-semibold text-indigo-300 mb-3">モードプレビューグリッド (m=1〜4, n=1〜4)</h2>
+        <canvas id="gridCanvas" role="img" aria-label="固有振動モードプレビューグリッド" class="w-full rounded" style="max-width:100%;"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ---- State ----
+const state = {
+  m: 2, n: 3,
+  aspectRatio: 1, // W/H
+  numGrains: 3000,
+  animSpeed: 3,
+  grains: [],
+  animId: null,
+  frame: 0,
+  running: false
+};
+
+// Load from localStorage
+const saved = localStorage.getItem('chladni_settings');
+if (saved) {
+  try {
+    const s = JSON.parse(saved);
+    Object.assign(state, { m: s.m||2, n: s.n||3, aspectRatio: s.aspectRatio||1,
+      numGrains: s.numGrains||3000, animSpeed: s.animSpeed||3 });
+  } catch(e) {}
+}
+
+// ---- DOM refs ----
+const canvas = document.getElementById('mainCanvas');
+const ctx = canvas.getContext('2d');
+const gridCanvas = document.getElementById('gridCanvas');
+const gridCtx = gridCanvas.getContext('2d');
+
+function saveState() {
+  localStorage.setItem('chladni_settings', JSON.stringify({
+    m: state.m, n: state.n, aspectRatio: state.aspectRatio,
+    numGrains: state.numGrains, animSpeed: state.animSpeed
+  }));
+}
+
+// ---- Chladni math ----
+function chladniValue(x, y, m, n, W, H) {
+  return Math.cos(m * Math.PI * x / W) * Math.cos(n * Math.PI * y / H);
+}
+
+function isNodal(x, y, m, n, W, H, threshold = 0.08) {
+  return Math.abs(chladniValue(x, y, m, n, W, H)) < threshold;
+}
+
+// ---- Grain simulation ----
+function initGrains(W, H, count) {
+  const grains = [];
+  for (let i = 0; i < count; i++) {
+    grains.push({
+      x: Math.random() * W,
+      y: Math.random() * H,
+      vx: (Math.random() - 0.5) * 2,
+      vy: (Math.random() - 0.5) * 2
+    });
+  }
+  return grains;
+}
+
+function updateGrains(grains, m, n, W, H, speed) {
+  const stepSize = 0.5 * speed;
+  for (let g of grains) {
+    // Compute gradient pointing away from zero
+    const eps = 2;
+    const cx = chladniValue(g.x, g.y, m, n, W, H);
+    const gx = chladniValue(g.x + eps, g.y, m, n, W, H) - cx;
+    const gy = chladniValue(g.x, g.y + eps, m, n, W, H) - cx;
+
+    // Move toward zero crossing (gradient descent on |f|)
+    const mag = Math.sqrt(gx * gx + gy * gy) + 1e-9;
+    // Push towards nodal line using sign of value and gradient
+    const force = -cx * 0.3; // proportional restoring force toward zero
+    g.vx += force * gx / mag * stepSize;
+    g.vy += force * gy / mag * stepSize;
+
+    // Damping
+    g.vx *= 0.92;
+    g.vy *= 0.92;
+
+    // Random perturbation (vibration energy)
+    g.vx += (Math.random() - 0.5) * stepSize * 0.4;
+    g.vy += (Math.random() - 0.5) * stepSize * 0.4;
+
+    g.x += g.vx;
+    g.y += g.vy;
+
+    // Boundary
+    if (g.x < 0) { g.x = 0; g.vx *= -0.5; }
+    if (g.x > W) { g.x = W; g.vx *= -0.5; }
+    if (g.y < 0) { g.y = 0; g.vy *= -0.5; }
+    if (g.y > H) { g.y = H; g.vy *= -0.5; }
+  }
+}
+
+// ---- Canvas setup ----
+function setupCanvas() {
+  const maxW = Math.min(600, window.innerWidth - 80);
+  const W = state.aspectRatio >= 2 ? maxW : maxW;
+  const H = state.aspectRatio === 3 ? Math.round(maxW / 3) :
+            state.aspectRatio === 2 ? Math.round(maxW / 2) : maxW;
+  canvas.width = W;
+  canvas.height = H;
+  return { W, H };
+}
+
+// ---- Draw ----
+function drawScene(W, H) {
+  // Background: heatmap of |f(x,y)|
+  const imgData = ctx.createImageData(W, H);
+  const data = imgData.data;
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const v = chladniValue(x, y, state.m, state.n, W, H);
+      const absV = Math.abs(v);
+      // Nodal lines = white, antinodes = dark
+      const brightness = Math.round((1 - absV) * 255 * 0.3); // subtle bg
+      const idx = (y * W + x) * 4;
+      data[idx] = brightness * 0.3;
+      data[idx+1] = brightness * 0.3;
+      data[idx+2] = brightness * 0.5;
+      data[idx+3] = 255;
+    }
+  }
+  ctx.putImageData(imgData, 0, 0);
+
+  // Nodal lines overlay
+  ctx.strokeStyle = 'rgba(200,200,255,0.4)';
+  ctx.lineWidth = 1;
+  // Draw isolines via marching squares (simplified: just highlight cells near zero)
+  const step = 4;
+  for (let y = 0; y < H - step; y += step) {
+    for (let x = 0; x < W - step; x += step) {
+      const v00 = chladniValue(x, y, state.m, state.n, W, H);
+      const v10 = chladniValue(x + step, y, state.m, state.n, W, H);
+      const v01 = chladniValue(x, y + step, state.m, state.n, W, H);
+      // Sign change in x direction
+      if (v00 * v10 < 0) {
+        const xi = x + step * Math.abs(v00) / (Math.abs(v00) + Math.abs(v10));
+        ctx.beginPath();
+        ctx.moveTo(xi, y);
+        ctx.lineTo(xi, y + step);
+        ctx.stroke();
+      }
+      // Sign change in y direction
+      if (v00 * v01 < 0) {
+        const yi = y + step * Math.abs(v00) / (Math.abs(v00) + Math.abs(v01));
+        ctx.beginPath();
+        ctx.moveTo(x, yi);
+        ctx.lineTo(x + step, yi);
+        ctx.stroke();
+      }
+    }
+  }
+
+  // Sand grains
+  for (let g of state.grains) {
+    const v = Math.abs(chladniValue(g.x, g.y, state.m, state.n, W, H));
+    const alpha = Math.max(0.3, 1.0 - v * 1.5);
+    const brightness = Math.round(200 + v * 55);
+    ctx.fillStyle = `rgba(${brightness},${brightness},${brightness-20},${alpha})`;
+    ctx.fillRect(Math.round(g.x), Math.round(g.y), 2, 2);
+  }
+}
+
+// ---- Animation loop ----
+function animate(W, H) {
+  updateGrains(state.grains, state.m, state.n, W, H, state.animSpeed);
+  drawScene(W, H);
+  state.frame++;
+  state.animId = requestAnimationFrame(() => animate(W, H));
+}
+
+function startSimulation() {
+  if (state.animId) cancelAnimationFrame(state.animId);
+  const { W, H } = setupCanvas();
+  state.grains = initGrains(W, H, state.numGrains);
+  state.frame = 0;
+  state.running = true;
+  document.getElementById('statusMsg').textContent = 'シミュレーション中...';
+  updateInfoPanel();
+  animate(W, H);
+  saveState();
+}
+
+function updateInfoPanel() {
+  const m = state.m, n = state.n;
+  const freqRatio = Math.sqrt(m*m + n*n) / Math.sqrt(2);
+  document.getElementById('freqRatio').textContent = freqRatio.toFixed(4);
+  document.getElementById('currentMode').textContent = `(${m}, ${n})`;
+  document.getElementById('nodalH').textContent = `${m - 1}`;
+  document.getElementById('nodalV').textContent = `${n - 1}`;
+}
+
+// ---- Grid canvas ----
+function drawGrid() {
+  const cellSize = 80;
+  const maxM = 4, maxN = 4;
+  const pad = 24;
+  gridCanvas.width = maxN * cellSize + pad;
+  gridCanvas.height = maxM * cellSize + pad;
+  gridCtx.fillStyle = '#1f2937';
+  gridCtx.fillRect(0, 0, gridCanvas.width, gridCanvas.height);
+
+  for (let mi = 1; mi <= maxM; mi++) {
+    for (let ni = 1; ni <= maxN; ni++) {
+      const ox = (ni - 1) * cellSize + 2;
+      const oy = (mi - 1) * cellSize + 2;
+      const W = cellSize - 4, H = cellSize - 4;
+
+      // Draw mini chladni
+      const imgD = gridCtx.createImageData(W, H);
+      const d = imgD.data;
+      for (let y = 0; y < H; y++) {
+        for (let x = 0; x < W; x++) {
+          const v = chladniValue(x, y, mi, ni, W, H);
+          const absV = Math.abs(v);
+          const nodal = absV < 0.12;
+          const idx = (y * W + x) * 4;
+          if (nodal) {
+            d[idx] = 240; d[idx+1] = 240; d[idx+2] = 255; d[idx+3] = 255;
+          } else {
+            const b = Math.round(20 + absV * 40);
+            d[idx] = b * 0.5; d[idx+1] = b * 0.5; d[idx+2] = b; d[idx+3] = 255;
+          }
+        }
+      }
+      gridCtx.putImageData(imgD, ox, oy);
+
+      // Label
+      gridCtx.fillStyle = (mi === state.m && ni === state.n) ? '#a5b4fc' : '#6b7280';
+      gridCtx.font = '9px monospace';
+      gridCtx.fillText(`${mi},${ni}`, ox + 2, oy + H - 2);
+
+      // Highlight selected
+      if (mi === state.m && ni === state.n) {
+        gridCtx.strokeStyle = '#6366f1';
+        gridCtx.lineWidth = 2;
+        gridCtx.strokeRect(ox, oy, W, H);
+      }
+    }
+  }
+}
+
+// ---- Event listeners ----
+document.getElementById('modeM').addEventListener('input', e => {
+  state.m = parseInt(e.target.value);
+  document.getElementById('modeMVal').textContent = state.m;
+});
+document.getElementById('modeN').addEventListener('input', e => {
+  state.n = parseInt(e.target.value);
+  document.getElementById('modeNVal').textContent = state.n;
+});
+document.getElementById('plateShape').addEventListener('change', e => {
+  state.aspectRatio = parseInt(e.target.value);
+});
+document.getElementById('numGrains').addEventListener('input', e => {
+  state.numGrains = parseInt(e.target.value);
+  document.getElementById('numGrainsVal').textContent = state.numGrains;
+});
+document.getElementById('animSpeed').addEventListener('input', e => {
+  state.animSpeed = parseInt(e.target.value);
+  document.getElementById('animSpeedVal').textContent = state.animSpeed;
+});
+document.getElementById('btnSimulate').addEventListener('click', startSimulation);
+document.getElementById('btnExport').addEventListener('click', () => {
+  const link = document.createElement('a');
+  link.download = `chladni_m${state.m}_n${state.n}.png`;
+  link.href = canvas.toDataURL('image/png');
+  link.click();
+});
+
+// Classic pattern presets
+document.querySelectorAll('[data-m]').forEach(el => {
+  const activate = () => {
+    state.m = parseInt(el.dataset.m);
+    state.n = parseInt(el.dataset.n);
+    document.getElementById('modeM').value = state.m;
+    document.getElementById('modeN').value = state.n;
+    document.getElementById('modeMVal').textContent = state.m;
+    document.getElementById('modeNVal').textContent = state.n;
+    startSimulation();
+  };
+  el.addEventListener('click', activate);
+  el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') activate(); });
+});
+
+// ---- Init ----
+document.getElementById('modeM').value = state.m;
+document.getElementById('modeN').value = state.n;
+document.getElementById('modeMVal').textContent = state.m;
+document.getElementById('modeNVal').textContent = state.n;
+document.getElementById('numGrains').value = state.numGrains;
+document.getElementById('numGrainsVal').textContent = state.numGrains;
+document.getElementById('animSpeed').value = state.animSpeed;
+document.getElementById('animSpeedVal').textContent = state.animSpeed;
+document.getElementById('plateShape').value = state.aspectRatio;
+
+drawGrid();
+startSimulation();
+</script>
+</body>
+</html>
